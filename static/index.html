@@ -257,20 +257,30 @@ function scheduleRefresh() {
   _refreshTimer = setTimeout(refresh, 800);
 }
 
+const _pendingWrites = [];
+
+async function _safePut(url, body) {
+  const p = fetch(API+url, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  _pendingWrites.push(p);
+  await p;
+  _pendingWrites.splice(_pendingWrites.indexOf(p), 1);
+}
+
+// 页面关闭前等待所有写操作完成
+window.addEventListener('beforeunload', () => {
+  if (_pendingWrites.length) { const x = new XMLHttpRequest(); x.open('GET', API+'/api/node-config', false); x.send(); }
+});
+
 async function toggleNode(el) {
   const bid = el.dataset.batch;
   const nm = el.dataset.node;
   const checked = el.classList.contains('done');
   const val = checked ? '' : new Date().toISOString().slice(0,10);
 
-  // 乐观更新：立刻改 UI
   if (checked) { el.classList.remove('done'); el.classList.add('empty'); el.textContent = ''; }
   else { el.classList.remove('empty'); el.classList.add('done'); el.textContent = '✓'; }
 
-  fetch(API+'/api/batch-nodes', {method:'PUT',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({batch_id:+bid,node_name:nm,start_time:val,end_time:val})
-  });
+  await _safePut('/api/batch-nodes', {batch_id:+bid, node_name:nm, start_time:val, end_time:val});
   scheduleRefresh();
 }
 
@@ -280,16 +290,12 @@ function toggleDate(el) {
   const inp = document.createElement('input');
   inp.type = 'date';
   inp.style.cssText = 'position:absolute;inset:0;opacity:0;cursor:pointer;z-index:10';
-  inp.onchange = () => {
+  inp.onchange = async () => {
     const v = inp.value;
     inp.remove();
-    // 乐观更新：立刻更新日期显示
     el.classList.add('set');
-    el.innerHTML = '<span>' + v.slice(5) + '</span><span class="clear-date" data-batch="'+bid+'" data-node="'+nm+'" onclick="event.stopPropagation();clearDate(this)">&times;</span>';
-    fetch(API+'/api/opt-date', {method:'PUT',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:v})
-    });
+    el.innerHTML = '<span>'+v.slice(5)+'</span><span class="clear-date" data-batch="'+bid+'" data-node="'+nm+'" onclick="event.stopPropagation();clearDate(this)">&times;</span>';
+    await _safePut('/api/opt-date', {batch_id:+bid, node_name:nm, opt_date:v});
     scheduleRefresh();
   };
   inp.onblur = () => { setTimeout(() => { if(inp.parentNode) inp.remove(); }, 200); };
@@ -297,30 +303,22 @@ function toggleDate(el) {
   inp.showPicker ? inp.showPicker() : inp.focus();
 }
 
-function clearDate(el) {
+async function clearDate(el) {
   const bid = el.dataset.batch;
   const nm = el.dataset.node;
-  // 乐观更新：立刻清除
   const cell = el.parentNode;
   cell.classList.remove('set');
   cell.innerHTML = '';
-  fetch(API+'/api/opt-date', {method:'PUT',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:''})
-  });
+  await _safePut('/api/opt-date', {batch_id:+bid, node_name:nm, opt_date:''});
   scheduleRefresh();
 }
 
-function editNote(bid, cur) {
+async function editNote(bid, cur) {
   const v = prompt('备注', cur);
   if (v===null) return;
-  // 乐观更新：立刻更新对应单元格
   const tr = document.querySelector('tr[data-batch="'+bid+'"]');
   if (tr) { const td = tr.querySelector('td.node-cell[onclick*="editNote"]'); if (td) td.textContent = v || '-'; }
-  fetch(API+'/api/batch-notes', {method:'PUT',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({batch_id:bid,notes:v})
-  });
+  await _safePut('/api/batch-notes', {batch_id:bid, notes:v});
   scheduleRefresh();
 }
 
@@ -330,14 +328,29 @@ function closeModal(id){document.getElementById(id).classList.remove('show')}
 async function doAdd() {
   const country = document.getElementById('addCountry').value;
   const name = document.getElementById('addName').value.trim();
+  const notes = document.getElementById('addNotes').value;
   if (!name) return toast('请输入批次号','error');
-  await fetch(API+'/api/batches', {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({country,batch_name:name,notes:document.getElementById('addNotes').value})
-  });
   closeModal('modalAdd');
+
+  // 乐观：先加到本地数据
+  const fakeId = -Date.now();
+  const fakeNodes = nodeConfig.map(cfg => ({
+    node_name: cfg.node_name, start_time: '', end_time: '', is_overdue: false,
+    estimated_days: cfg.estimated_days, is_timepoint: cfg.is_timepoint, opt_date: ''
+  }));
+  batches.push({id:fakeId, country, batch_name:name, notes, nodes:fakeNodes, created_at:'', updated_at:''});
+  renderTable(); refreshStatsQuick();
   toast('批次已添加');
-  refresh();
+
+  const r = await fetch(API+'/api/batches', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({country, batch_name:name, notes})
+  });
+  const j = await r.json();
+  // 更新真实 id
+  const item = batches.find(b => b.id === fakeId);
+  if (item) item.id = j.id;
+  scheduleRefresh();
 }
 
 function showEstConfig() {
@@ -389,12 +402,17 @@ function updateSelectedCount() {
 async function deleteSelected() {
   if (!selectedBatches.size) return;
   if (!confirm(`确认删除 ${selectedBatches.size} 个批次？`)) return;
-  for (const bid of selectedBatches) {
+  const ids = [...selectedBatches];
+  // 乐观：立刻从本地移除
+  batches = batches.filter(b => !selectedBatches.has(String(b.id)));
+  selectedBatches.clear();
+  renderTable();
+  refreshStatsQuick();
+  toast('已删除');
+  for (const bid of ids) {
     await fetch(API+'/api/batches/'+bid, {method:'DELETE'});
   }
-  selectedBatches.clear();
-  toast('已删除');
-  refresh();
+  scheduleRefresh();
 }
 
 async function refresh() {
@@ -423,6 +441,11 @@ async function refreshStats() {
   const filter = document.getElementById('countryFilter').value;
   const sRes = await fetch(API+'/api/stats?country='+encodeURIComponent(filter)).then(r=>r.json());
   renderStats(sRes);
+}
+
+function refreshStatsQuick() {
+  const filter = document.getElementById('countryFilter').value;
+  fetch(API+'/api/stats?country='+encodeURIComponent(filter)).then(r=>r.json()).then(renderStats);
 }
 
 function toast(msg, type='success') {
