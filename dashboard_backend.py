@@ -296,20 +296,28 @@ async def sse_events():
 def list_batches():
     with get_db() as db:
         batches = db.execute("SELECT * FROM batches ORDER BY country, batch_name").fetchall()
+        all_nodes = db.execute("""
+            SELECT bn.batch_id, bn.node_name, bn.start_time, bn.end_time,
+                   bn.is_overdue, bn.opt_date, nc.estimated_days, nc.is_timepoint
+            FROM batch_nodes bn
+            JOIN node_config nc ON bn.node_name=nc.node_name
+            ORDER BY nc.sort_order
+        """).fetchall()
+        nodes_by_bid = {}
+        for n in all_nodes:
+            bid = n["batch_id"]
+            nodes_by_bid.setdefault(bid, []).append({
+                "node_name": n["node_name"], "start_time": n["start_time"],
+                "end_time": n["end_time"], "is_overdue": bool(n["is_overdue"]),
+                "estimated_days": n["estimated_days"], "is_timepoint": bool(n["is_timepoint"]),
+                "opt_date": n["opt_date"] or "",
+            })
         result = []
         for b in batches:
-            nodes = db.execute("""
-                SELECT bn.*, nc.estimated_days, nc.is_timepoint FROM batch_nodes bn
-                JOIN node_config nc ON bn.node_name=nc.node_name
-                WHERE bn.batch_id=? ORDER BY nc.sort_order
-            """, (b["id"],)).fetchall()
             result.append({
                 "id": b["id"], "country": b["country"], "batch_name": b["batch_name"],
                 "notes": b["notes"],
-                "nodes": [{"node_name": n["node_name"], "start_time": n["start_time"],
-                           "end_time": n["end_time"], "is_overdue": bool(n["is_overdue"]),
-                           "estimated_days": n["estimated_days"], "is_timepoint": bool(n["is_timepoint"]),
-                           "opt_date": n["opt_date"] or ""} for n in nodes],
+                "nodes": nodes_by_bid.get(b["id"], []),
                 "created_at": b["created_at"], "updated_at": b["updated_at"],
             })
         return result
@@ -392,20 +400,32 @@ def get_anomalies():
     with get_db() as db:
         rows = db.execute("""
             SELECT bn.id, b.country, b.batch_name, bn.node_name, bn.start_time,
-                   nc.estimated_days, nc.sort_order
+                   nc.estimated_days, nc.sort_order, bn.batch_id
             FROM batch_nodes bn JOIN batches b ON bn.batch_id=b.id
             JOIN node_config nc ON bn.node_name=nc.node_name
             WHERE bn.is_overdue=1 ORDER BY b.country, b.batch_name, nc.sort_order
         """).fetchall()
+
+        bid_set = set(r["batch_id"] for r in rows)
+        prev_map = {}
+        if bid_set:
+            all_prev = db.execute("""
+                SELECT bn2.batch_id, nc2.sort_order, bn2.start_time
+                FROM batch_nodes bn2
+                JOIN node_config nc2 ON bn2.node_name=nc2.node_name
+                WHERE bn2.batch_id IN ({})
+                ORDER BY bn2.batch_id, nc2.sort_order
+            """.format(",".join("?" * len(bid_set))), list(bid_set)).fetchall()
+            by_batch = {}
+            for p in all_prev:
+                by_batch.setdefault(p["batch_id"], []).append(p)
+            for bid, plist in by_batch.items():
+                for i in range(len(plist)):
+                    prev_map[(bid, plist[i]["sort_order"])] = i > 0 and plist[i-1]["start_time"] or ""
+
         result = []
         for r in rows:
-            prev = db.execute("""
-                SELECT bn2.start_time FROM batch_nodes bn2
-                JOIN node_config nc2 ON bn2.node_name=nc2.node_name
-                WHERE bn2.batch_id=(SELECT batch_id FROM batch_nodes WHERE id=?)
-                AND nc2.sort_order=? ORDER BY nc2.sort_order LIMIT 1
-            """, (r["id"], r["sort_order"] - 1)).fetchone()
-            prev_time = prev["start_time"] if prev else ""
+            prev_time = prev_map.get((r["batch_id"], r["sort_order"]), "")
             result.append({
                 "country": r["country"], "batch_name": r["batch_name"],
                 "node_name": r["node_name"], "start_time": r["start_time"],
@@ -424,24 +444,32 @@ def get_stats(country: str = ""):
         countries = [{"country": r["country"], "count": r["cnt"]} for r in country_stats]
         total_batches = db.execute(f"SELECT COUNT(*) as cnt FROM batches {country_filter}", country_params).fetchone()["cnt"]
 
-        batches = db.execute(f"SELECT id FROM batches {country_filter} ORDER BY id", country_params).fetchall()
         node_config = db.execute("SELECT node_name, sort_order FROM node_config ORDER BY sort_order").fetchall()
         node_names = [nc["node_name"] for nc in node_config]
+
+        all_nodes = db.execute(f"""
+            SELECT bn.batch_id, bn.node_name, bn.start_time, nc.sort_order
+            FROM batch_nodes bn
+            JOIN node_config nc ON bn.node_name=nc.node_name
+            JOIN batches b ON bn.batch_id=b.id
+            {country_filter}
+            ORDER BY bn.batch_id, nc.sort_order
+        """, country_params).fetchall()
+
         node_counts = {name: 0 for name in node_names}
         node_counts["已完成"] = 0
-
-        for b in batches:
-            nodes = db.execute("""
-                SELECT bn.node_name, bn.start_time, nc.sort_order FROM batch_nodes bn
-                JOIN node_config nc ON bn.node_name=nc.node_name
-                WHERE bn.batch_id=? ORDER BY nc.sort_order
-            """, (b["id"],)).fetchall()
-            current = "已完成"
-            for n in nodes:
-                if not n["start_time"]:
-                    current = n["node_name"]
-                    break
-            node_counts[current] = node_counts.get(current, 0) + 1
+        prev_bid = None
+        current_for_batch = "已完成"
+        for n in all_nodes:
+            if n["batch_id"] != prev_bid:
+                if prev_bid is not None:
+                    node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
+                prev_bid = n["batch_id"]
+                current_for_batch = "已完成"
+            if current_for_batch == "已完成" and not n["start_time"]:
+                current_for_batch = n["node_name"]
+        if prev_bid is not None:
+            node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
 
         nodes = [{"node_name": name, "count": node_counts.get(name, 0)} for name in node_names + ["已完成"]]
         return {"total_batches": total_batches, "countries": countries, "nodes": nodes}
