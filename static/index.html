@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>缇庢床鍖鸿揣鏌滆繘搴﹁拷韪?v5</title>
+<style>
+:root {
+  --bg:#f5f6f8; --card:#fff; --text:#1d1d1f; --text2:#86868b;
+  --accent:#4A90D9; --accent-hover:#357abd; --accent-light:#e8f0fe;
+  --border:#e8e8ed; --green:#34C759; --red:#FF3B30; --orange:#FF9500;
+  --shadow:0 1px 3px rgba(0,0,0,.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.toolbar{background:var(--card);padding:8px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:100;box-shadow:var(--shadow);border-bottom:1px solid var(--border)}
+.toolbar h1{font-size:15px;font-weight:600;white-space:nowrap;letter-spacing:-0.2px}
+.toolbar .sep{width:1px;height:22px;background:var(--border);margin:0 2px}
+.toolbar button{padding:5px 13px;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer;font-size:12px;transition:.15s;color:var(--text)}
+.toolbar button:hover{background:#f5f5f7}
+.toolbar button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:500}
+.toolbar button.primary:hover{background:var(--accent-hover)}
+.toolbar select{padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--card);outline:none;cursor:pointer;color:var(--text);min-width:100px}
+.toolbar select:focus{border-color:var(--accent)}
+.toolbar .stats-brief{font-size:11px;color:var(--text2);margin-left:auto}
+
+.container{padding:10px 18px;max-width:calc(100vw - 36px);overflow-x:auto}
+
+.panels{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.panel{background:var(--card);border-radius:8px;padding:10px 14px;border:1px solid var(--border);box-shadow:var(--shadow);flex:1;min-width:220px}
+.panel h3{font-size:12px;margin-bottom:8px;color:var(--text2);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:5px}
+.stat-item{text-align:center;padding:5px 3px;border-radius:6px;background:var(--accent-light)}
+.stat-item .val{font-size:15px;font-weight:700;color:var(--accent)}
+.stat-item .lbl{font-size:10px;color:var(--text2)}
+.anomaly-list{max-height:180px;overflow-y:auto;font-size:11px}
+.anomaly-list .item{padding:3px 0;border-bottom:1px solid #f5f5f7;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.anomaly-list .item .tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;color:#fff;font-weight:500}
+.anomaly-list .item .tag.red{background:var(--red)}
+.anomaly-list .item .tag.orange{background:var(--orange)}
+
+.table-wrap{overflow-x:auto;background:var(--card);border-radius:8px;border:1px solid var(--border);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:1100px;font-size:11px}
+th,td{padding:3px 6px;border-bottom:1px solid #f5f5f7;text-align:center;vertical-align:middle;white-space:nowrap;line-height:1.4}
+th{background:#fafafb;font-weight:600;position:sticky;top:0;z-index:2;font-size:11px;color:#141415}
+th .est{font-size:9px;font-weight:400;color:#b0b0b8;display:block}
+thead tr:first-child th{border-bottom:2px solid var(--border)}
+td.col-country{text-align:left;font-weight:500;min-width:50px;font-size:11px}
+
+tr[data-country="宸磋タ"] td.col-country{border-left:3px solid #34C759}
+tr[data-country="缇庝笢"] td.col-country{border-left:3px solid var(--accent)}
+tr[data-country="澧ㄨタ鍝?] td.col-country{border-left:3px solid var(--orange)}
+tr[data-country="缇庤タ"] td.col-country{border-left:3px solid #AF52DE}
+tr:hover{background:#fafafb}
+
+.node-cell{cursor:pointer;border-radius:4px;transition:.12s;min-width:72px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;position:relative;user-select:none}
+.node-cell:hover{filter:brightness(0.92)}
+.node-cell.empty{color:#d0d0d5;background:#fafafb;border:1px dashed #e5e5ea}
+.node-cell.done{color:#fff;background:var(--green)}
+
+.date-cell{cursor:pointer;border-radius:4px;transition:.12s;min-width:72px;height:28px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;position:relative;user-select:none;background:#fafafb;border:1px dashed #e5e5ea;color:#d0d0d5}
+.date-cell:hover{background:#e8f0fe;border-color:var(--accent)}
+.date-cell.set{color:var(--text);background:#fff;border:1px solid #d0d0d5}
+.date-cell.set:hover{background:#e8f0fe}
+.date-cell .clear-date{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;background:#e5e5ea;color:#86868b;font-size:10px;display:none;z-index:5}
+.date-cell.set:hover .clear-date{display:block}
+.date-cell .clear-date:hover{background:var(--red);color:#fff}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:200;justify-content:center;align-items:center;backdrop-filter:blur(2px)}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border-radius:10px;padding:18px 22px;min-width:340px;max-width:520px;box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.modal h3{margin-bottom:12px;font-size:14px;font-weight:600}
+.modal .row{margin-bottom:9px;display:flex;align-items:center;gap:6px}
+.modal .row label{width:56px;text-align:right;font-size:12px;color:var(--text2);flex-shrink:0}
+.modal .row input,.modal .row select,.modal .row textarea{flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;outline:none}
+.modal .row input:focus,.modal .row select:focus{border-color:var(--accent)}
+.modal .row textarea{height:40px;resize:vertical}
+.modal .btns{display:flex;justify-content:flex-end;gap:6px;margin-top:14px}
+.modal .btns button{padding:5px 16px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px}
+.modal .btns button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.modal .btns button.primary:hover{background:var(--accent-hover)}
+
+.toast{position:fixed;top:16px;right:16px;padding:8px 18px;border-radius:6px;color:#fff;font-size:12px;z-index:300;opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.success{background:var(--accent)}
+.toast.error{background:var(--red)}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>璐ф煖杩涘害杩借釜</h1>
+  <div class="sep"></div>
+  <button class="primary" onclick="showAddBatch()">+ 鏂板鎵规</button>
+  <button onclick="showEstConfig()">棰勪及澶╂暟</button>
+  <button onclick="deleteSelected()" id="btnDel" disabled>鍒犻櫎閫変腑</button>
+  <div class="sep"></div>
+  <select id="countryFilter" onchange="renderTable();refreshStats()">
+    <option value="">鍏ㄩ儴鍥藉</option>
+  </select>
+  <span class="stats-brief" id="statsBrief"></span>
+</div>
+
+<div class="container">
+  <div class="panels">
+    <div class="panel"><h3>鍚勫浗鎵规</h3><div id="countryStats" class="stat-grid"></div></div>
+    <div class="panel" style="flex:2"><h3>鑺傜偣杩涘害</h3><div id="nodeStats" class="stat-grid"></div></div>
+    <div class="panel" style="flex:1.5"><h3>寮傚父鍛婅</h3><div id="anomalyPanel" class="anomaly-list"></div></div>
+  </div>
+  <div class="table-wrap"><table id="mainTable"></table></div>
+</div>
+
+<div class="modal-overlay" id="modalAdd">
+  <div class="modal">
+    <h3>鏂板鎵规</h3>
+    <div class="row"><label>鍥藉</label><select id="addCountry"><option>宸磋タ</option><option>缇庝笢</option><option>澧ㄨタ鍝?/option><option>缇庤タ</option></select></div>
+    <div class="row"><label>鎵规鍙?/label><input id="addName" placeholder="濡?202615"></div>
+    <div class="row"><label>澶囨敞</label><input id="addNotes" placeholder="鍙€?></div>
+    <div class="btns"><button onclick="closeModal('modalAdd')">鍙栨秷</button><button class="primary" onclick="doAdd()">纭</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalEst">
+  <div class="modal" style="max-width:660px">
+    <h3>棰勪及鐩搁偦澶╂暟</h3>
+    <div id="estForm"></div>
+    <div class="btns"><button onclick="closeModal('modalEst')">鍙栨秷</button><button class="primary" onclick="saveEstConfig()">淇濆瓨</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let batches = [], nodeConfig = [], selectedBatches = new Set();
+
+let es = null;
+function connectSSE() {
+  if (es) es.close();
+  es = new EventSource(API+'/api/events');
+  es.onmessage = () => refresh();
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 2000); };
+}
+connectSSE();
+
+async function init() {
+  try {
+    const [bRes, cRes, aRes, sRes] = await Promise.all([
+      fetch(API+'/api/batches').then(r=>r.json()),
+      fetch(API+'/api/node-config').then(r=>r.json()),
+      fetch(API+'/api/anomalies').then(r=>r.json()),
+      fetch(API+'/api/stats').then(r=>r.json())
+    ]);
+    console.log('init OK', bRes.length, 'batches', cRes.length, 'nodes');
+    batches = bRes; nodeConfig = cRes;
+    const sel = document.getElementById('countryFilter');
+    const countries = [...new Set(batches.map(b=>b.country))].sort();
+    countries.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+    renderTable();
+    renderStats(sRes);
+    renderAnomalies(aRes);
+  } catch(e) {
+    console.error('init error:', e);
+    document.getElementById('mainTable').innerHTML = '<tr><td style="padding:20px;color:red">鍔犺浇澶辫触: '+e.message+'</td></tr>';
+  }
+}
+
+function renderStats(st) {
+  document.getElementById('statsBrief').textContent =
+    `鍏?${st.total_batches} 鎵规 路 ${st.countries.length} 鍥絗;
+  document.getElementById('countryStats').innerHTML = st.countries.map(c=>
+    `<div class="stat-item"><div class="val">${c.count}</div><div class="lbl">${c.country}</div></div>`
+  ).join('');
+  const total = st.total_batches || 1;
+  document.getElementById('nodeStats').innerHTML = st.nodes.map(n=> {
+    const pct = n.node_name==='宸插畬鎴? ? Math.round(n.count/total*100) : 0;
+    return `<div class="stat-item">
+      <div class="val" style="font-size:13px">${n.count}</div>
+      <div class="lbl">${n.node_name}</div>
+      <div style="height:2px;background:#eee;border-radius:1px;margin-top:3px"><div style="height:100%;width:${pct}%;background:var(--green);border-radius:1px;transition:.3s"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderAnomalies(a) {
+  const p = document.getElementById('anomalyPanel');
+  if (!a.length) { p.innerHTML='<div style="color:var(--text2);font-size:11px">鏆傛棤寮傚父</div>'; return; }
+  p.innerHTML = a.map(x=> {
+    let cls='red',label='瓒呮椂';
+    if(x.estimated_days>0&&x.prev_time){
+      try{
+        const d=(new Date(x.start_time)-new Date(x.prev_time))/86400000;
+        if(d-x.estimated_days>=3){label=`瓒?{Math.round(d-x.estimated_days)}澶ー}
+        else if(d-x.estimated_days>=1){label=`瓒?{Math.round(d-x.estimated_days)}澶ー}
+        else if(d-x.estimated_days>=-1){cls='orange';label='涓寸晫'}
+      }catch(e){}
+    }
+    return `<div class="item">
+      <span class="tag ${cls}">${label}</span>
+      <strong>${x.country}-${x.batch_name}</strong> ${x.node_name}
+      <span style="font-size:10px;color:var(--text2)">闂撮殧${x.estimated_days}澶?/span>
+    </div>`;
+  }).join('');
+}
+
+function renderTable() {
+  const filter = document.getElementById('countryFilter').value;
+  const filtered = filter ? batches.filter(b=>b.country===filter) : batches;
+  const OPT_NODES = ['鍒颁粨','寮€鑸?,'鍒版腐'];
+
+  const thead = `<thead>
+    <tr>
+      <th style="width:28px"><input type="checkbox" onchange="toggleAll(this)" id="checkAll"></th>
+      <th>鍥藉</th><th>鎵规</th>
+      ${nodeConfig.map(n=>{
+        let h = `<th>${n.node_name}<span class="est">${n.estimated_days||'-'}澶?/span></th>`;
+        if(OPT_NODES.includes(n.node_name)) h += `<th><span style="font-size:11px">鏃ユ湡</span></th>`;
+        return h;
+      }).join('')}
+      <th>澶囨敞</th>
+    </tr></thead>`;
+
+  const COLOR_MAP = {宸磋タ:'#34C759',缇庝笢:'#4A90D9',澧ㄨタ鍝?'#FF9500',缇庤タ:'#AF52DE'};
+  const tbody = filtered.map(b => {
+    const nodesMap = {}; b.nodes.forEach(n => nodesMap[n.node_name] = n);
+    const cells = nodeConfig.map(cfg => {
+      const n = nodesMap[cfg.node_name];
+      const checked = !!(n && n.start_time);
+      let cell = `<td><div class="node-cell ${checked ? 'done' : 'empty'}" data-batch="${b.id}" data-node="${cfg.node_name}"
+        onclick="toggleNode(this)">${checked ? '鉁? : ''}</div></td>`;
+      if (OPT_NODES.includes(cfg.node_name)) {
+        const od = (n && n.opt_date) || '';
+        cell += `<td><div class="date-cell ${od?'set':''}" data-batch="${b.id}" data-node="${cfg.node_name}"
+          onclick="toggleDate(this)">${od ? '<span>'+od.slice(5)+'</span><span class="clear-date" data-batch="'+b.id+'" data-node="'+cfg.node_name+'" onclick="event.stopPropagation();clearDate(this)">&times;</span>' : ''}</div></td>`;
+      }
+      return cell;
+    });
+    const notes = b.notes || '-';
+    const cc = COLOR_MAP[b.country]||'#ccc';
+    return `<tr data-country="${b.country}" data-batch="${b.id}">
+      <td><input type="checkbox" data-batch="${b.id}" onchange="selToggle(this)" style="accent-color:${cc}"></td>
+      <td class="col-country"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${cc};margin-right:5px;vertical-align:middle"></span>${b.country}</td>
+      <td class="col-batch">${b.batch_name}</td>
+      ${cells.join('')}
+      <td class="node-cell" style="cursor:pointer;text-align:left;max-width:100px;overflow:hidden;text-overflow:ellipsis" onclick="editNote(${b.id},'${escapeHtml(b.notes||'')}')">${notes}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('mainTable').innerHTML = thead + '<tbody>'+tbody+'</tbody>';
+  updateSelectedCount();
+}
+
+async function toggleNode(el) {
+  const bid = el.dataset.batch;
+  const nm = el.dataset.node;
+  const checked = el.classList.contains('done');
+  const val = checked ? '' : new Date().toISOString().slice(0,10);
+  await fetch(API+'/api/batch-nodes', {method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({batch_id:+bid,node_name:nm,start_time:val,end_time:val})
+  });
+  refresh();
+}
+
+function toggleDate(el) {
+  const bid = el.dataset.batch;
+  const nm = el.dataset.node;
+  const inp = document.createElement('input');
+  inp.type = 'date';
+  inp.style.cssText = 'position:absolute;inset:0;opacity:0;cursor:pointer;z-index:10';
+  inp.onchange = async () => {
+    const v = inp.value;
+    inp.remove();
+    await fetch(API+'/api/opt-date', {method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:v})
+    });
+    refresh();
+  };
+  inp.onblur = () => { setTimeout(() => { if(inp.parentNode) inp.remove(); }, 200); };
+  el.appendChild(inp);
+  inp.showPicker ? inp.showPicker() : inp.focus();
+}
+
+async function clearDate(el) {
+  const bid = el.dataset.batch;
+  const nm = el.dataset.node;
+  await fetch(API+'/api/opt-date', {method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:''})
+  });
+  refresh();
+}
+
+function editNote(bid, cur) {
+  const v = prompt('澶囨敞', cur);
+  if (v===null) return;
+  fetch(API+'/api/batch-notes', {method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({batch_id:bid,notes:v})
+  }).then(()=>{toast('宸叉洿鏂?);refresh();});
+}
+
+function showAddBatch(){document.getElementById('modalAdd').classList.add('show')}
+function closeModal(id){document.getElementById(id).classList.remove('show')}
+
+async function doAdd() {
+  const country = document.getElementById('addCountry').value;
+  const name = document.getElementById('addName').value.trim();
+  if (!name) return toast('璇疯緭鍏ユ壒娆″彿','error');
+  await fetch(API+'/api/batches', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({country,batch_name:name,notes:document.getElementById('addNotes').value})
+  });
+  closeModal('modalAdd');
+  toast('鎵规宸叉坊鍔?);
+  refresh();
+}
+
+function showEstConfig() {
+  const html = nodeConfig.map(n=> `
+    <div class="row">
+      <label>${n.node_name}</label>
+      <input type="number" step="0.5" min="0" value="${n.estimated_days}" data-node="${n.node_name}" style="width:70px">
+      <span style="font-size:10px;color:var(--text2)">澶?/span>
+      ${n.sort_order===0?'<span style="font-size:10px;color:var(--text2)">(璧峰鑺傜偣)</span>':''}
+    </div>`).join('');
+  document.getElementById('estForm').innerHTML = html;
+  document.getElementById('modalEst').classList.add('show');
+}
+
+async function saveEstConfig() {
+  const inps = document.querySelectorAll('#estForm input');
+  for (const inp of inps) {
+    await fetch(API+'/api/node-config', {method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({node_name:inp.dataset.node, estimated_days:parseFloat(inp.value)||0})
+    });
+  }
+  closeModal('modalEst');
+  toast('棰勪及澶╂暟宸叉洿鏂?);
+  refresh();
+}
+
+function selToggle(cb) {
+  const bid = cb.dataset.batch;
+  cb.checked ? selectedBatches.add(bid) : selectedBatches.delete(bid);
+  updateSelectedCount();
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll('#mainTable tbody input[type=checkbox]').forEach(c=>{
+    c.checked=cb.checked;
+    if(cb.checked) selectedBatches.add(c.dataset.batch);
+    else selectedBatches.delete(c.dataset.batch);
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const btn = document.getElementById('btnDel');
+  btn.disabled = selectedBatches.size===0;
+  btn.textContent = selectedBatches.size ? `鍒犻櫎 (${selectedBatches.size})` : '鍒犻櫎';
+}
+
+async function deleteSelected() {
+  if (!selectedBatches.size) return;
+  if (!confirm(`纭鍒犻櫎 ${selectedBatches.size} 涓壒娆★紵`)) return;
+  for (const bid of selectedBatches) {
+    await fetch(API+'/api/batches/'+bid, {method:'DELETE'});
+  }
+  selectedBatches.clear();
+  toast('宸插垹闄?);
+  refresh();
+}
+
+async function refresh() {
+  const filter = document.getElementById('countryFilter').value;
+  const [bRes, cRes, aRes, sRes] = await Promise.all([
+    fetch(API+'/api/batches').then(r=>r.json()),
+    fetch(API+'/api/node-config').then(r=>r.json()),
+    fetch(API+'/api/anomalies').then(r=>r.json()),
+    fetch(API+'/api/stats?country='+encodeURIComponent(filter)).then(r=>r.json())
+  ]);
+  batches=bRes; nodeConfig=cRes;
+  selectedBatches.clear();
+  document.getElementById('checkAll').checked=false;
+  const sel = document.getElementById('countryFilter');
+  const currentFilter = filter;
+  const countries = [...new Set(batches.map(b=>b.country))].sort();
+  sel.innerHTML = '<option value="">鍏ㄩ儴鍥藉</option>';
+  countries.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
+  if (countries.includes(currentFilter)) sel.value = currentFilter;
+  renderTable();
+  renderStats(sRes);
+  renderAnomalies(aRes);
+}
+
+async function refreshStats() {
+  const filter = document.getElementById('countryFilter').value;
+  const sRes = await fetch(API+'/api/stats?country='+encodeURIComponent(filter)).then(r=>r.json());
+  renderStats(sRes);
+}
+
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) { e.target.classList.remove('show'); }
+});
+
+init();
+</script>
+</body>
+</html>
