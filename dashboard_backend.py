@@ -1,5 +1,5 @@
 """
-缇庢床鍖鸿揣鏌滆繘搴﹁拷韪?v6 - Turso 浜?SQLite + Render 閮ㄧ讲
+美洲区货柜进度追踪 v6 - Turso 云 SQLite + Render 部署
 """
 
 import asyncio, sqlite3, os, json, httpx
@@ -18,18 +18,18 @@ TURSO_TOKEN = os.getenv("TURSO_TOKEN", "")
 DB_PATH = Path(__file__).parent / "dashboard.db"
 
 NODES_DEF = [
-    ("甯傚満鎻愰渶", 0, 0, 1),
-    ("绯荤粺涓嬪崟", 1, 0, 1),
-    ("鎺掓煖纭鏁伴噺", 2, 0, 1),
-    ("渚涘簲鍟嗕笅鍗?, 3, 0, 1),
-    ("鍟嗘", 4, 0, 1),
-    ("鍒颁粨", 5, 0, 1),
-    ("璁㈣埍", 6, 0, 1),
-    ("瑁呮煖", 7, 0, 1),
-    ("寮€鑸?, 8, 0, 1),
-    ("鍒版腐", 9, 0, 1),
-    ("娓呭叧", 10, 0, 1),
-    ("鍏ュ簱", 11, 0, 1),
+    ("市场提需", 0, 0, 1),
+    ("系统下单", 1, 0, 1),
+    ("排柜确认数量", 2, 0, 1),
+    ("供应商下单", 3, 0, 1),
+    ("商检", 4, 0, 1),
+    ("到仓", 5, 0, 1),
+    ("订舱", 6, 0, 1),
+    ("装柜", 7, 0, 1),
+    ("开船", 8, 0, 1),
+    ("到港", 9, 0, 1),
+    ("清关", 10, 0, 1),
+    ("入库", 11, 0, 1),
 ]
 
 NODE_NAMES = [n[0] for n in NODES_DEF]
@@ -42,10 +42,10 @@ def now_str():
 
 
 class TursoConnection:
-    """Turso HTTP API 灏佽锛屾彁渚?sqlite3.Row 鍏煎鎺ュ彛"""
+    """Turso HTTP API 封装，提供 sqlite3.Row 兼容接口"""
 
     def __init__(self, url: str, token: str):
-        # libsql://host 鈫?https://host
+        # libsql://host → https://host
         self._http_url = "https://" + url.replace("libsql://", "").replace("https://", "")
         self._token = token
         self.row_factory = None
@@ -117,7 +117,7 @@ class TursoConnection:
 
 
 class _TursoRow:
-    """妯℃嫙 sqlite3.Row"""
+    """模拟 sqlite3.Row"""
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -129,7 +129,7 @@ class _TursoRow:
 
 
 class _TursoCursor:
-    """妯℃嫙 sqlite3.Cursor"""
+    """模拟 sqlite3.Cursor"""
 
     def __init__(self):
         self._results = []
@@ -208,18 +208,18 @@ def init_db():
 
         if db.execute("SELECT COUNT(*) FROM batches").fetchone()[0] == 0:
             seed = [
-                ("宸磋タ","202604",""),
-                ("宸磋タ","202606",""),
-                ("宸磋タ","202607-1",""),
-                ("宸磋タ","202609",""),
-                ("缇庝笢","202609 1-2-3",""),
-                ("缇庝笢","202610",""),
-                ("缇庝笢","202611锛?锛?,""),
-                ("缇庝笢","202612",""),
-                ("缇庝笢","202613",""),
-                ("澧ㄨタ鍝?,"202609",""),
-                ("缇庝笢","202614",""),
-                ("缇庤タ","202614",""),
+                ("巴西","202604",""),
+                ("巴西","202606",""),
+                ("巴西","202607-1",""),
+                ("巴西","202609",""),
+                ("美东","202609 1-2-3",""),
+                ("美东","202610",""),
+                ("美东","202611（4）",""),
+                ("美东","202612",""),
+                ("美东","202613",""),
+                ("墨西哥","202609",""),
+                ("美东","202614",""),
+                ("美西","202614",""),
             ]
             for ctry, bat, nt in seed:
                 db.execute("INSERT INTO batches (country,batch_name,notes,created_at,updated_at) VALUES (?,?,?,?,?)",
@@ -271,7 +271,7 @@ class OptDateUpdate(BaseModel):
     batch_id: int; node_name: str; opt_date: str = ""
 
 
-app = FastAPI(title="缇庢床鍖鸿揣鏌滆繘搴﹁拷韪?v6")
+app = FastAPI(title="美洲区货柜进度追踪 v6")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -325,7 +325,7 @@ async def create_batch(data: BatchCreate):
         for nm in NODE_NAMES:
             db.execute("INSERT INTO batch_nodes (batch_id,node_name) VALUES (?,?)", (bid, nm))
     await broadcast_change()
-    return {"id": bid, "message": "鎵规宸叉坊鍔?}
+    return {"id": bid, "message": "批次已添加"}
 
 
 @app.delete("/api/batches/{batch_id}")
@@ -334,7 +334,7 @@ async def delete_batch(batch_id: int):
         db.execute("DELETE FROM batch_nodes WHERE batch_id=?", (batch_id,))
         db.execute("DELETE FROM batches WHERE id=?", (batch_id,))
     await broadcast_change()
-    return {"message": "鎵规宸插垹闄?}
+    return {"message": "批次已删除"}
 
 
 @app.put("/api/batch-nodes")
@@ -346,7 +346,7 @@ async def update_batch_node(data: BatchNodeUpdate):
         db.execute("UPDATE batches SET updated_at=? WHERE id=?", (_mk_time(), data.batch_id))
         recalc_batch_overdue(db, data.batch_id)
     await broadcast_change()
-    return {"message": "鑺傜偣宸叉洿鏂?}
+    return {"message": "节点已更新"}
 
 
 @app.put("/api/opt-date")
@@ -356,7 +356,7 @@ async def update_opt_date(data: OptDateUpdate):
                    (data.opt_date, data.batch_id, data.node_name))
         db.execute("UPDATE batches SET updated_at=? WHERE id=?", (_mk_time(), data.batch_id))
     await broadcast_change()
-    return {"message": "鍙€夋棩鏈熷凡鏇存柊"}
+    return {"message": "可选日期已更新"}
 
 
 @app.get("/api/node-config")
@@ -376,7 +376,7 @@ async def update_node_config(data: NodeConfigUpdate):
         for bid in batch_ids:
             recalc_batch_overdue(db, bid["id"])
     await broadcast_change()
-    return {"message": "棰勪及鐢ㄦ椂宸叉洿鏂?}
+    return {"message": "预估用时已更新"}
 
 
 @app.put("/api/batch-notes")
@@ -384,7 +384,7 @@ async def update_batch_note(data: BatchNoteUpdate):
     with get_db() as db:
         db.execute("UPDATE batches SET notes=?, updated_at=? WHERE id=?", (data.notes, _mk_time(), data.batch_id))
     await broadcast_change()
-    return {"message": "澶囨敞宸叉洿鏂?}
+    return {"message": "备注已更新"}
 
 
 @app.get("/api/anomalies")
@@ -428,7 +428,7 @@ def get_stats(country: str = ""):
         node_config = db.execute("SELECT node_name, sort_order FROM node_config ORDER BY sort_order").fetchall()
         node_names = [nc["node_name"] for nc in node_config]
         node_counts = {name: 0 for name in node_names}
-        node_counts["宸插畬鎴?] = 0
+        node_counts["已完成"] = 0
 
         for b in batches:
             nodes = db.execute("""
@@ -436,14 +436,14 @@ def get_stats(country: str = ""):
                 JOIN node_config nc ON bn.node_name=nc.node_name
                 WHERE bn.batch_id=? ORDER BY nc.sort_order
             """, (b["id"],)).fetchall()
-            current = "宸插畬鎴?
+            current = "已完成"
             for n in nodes:
                 if not n["start_time"]:
                     current = n["node_name"]
                     break
             node_counts[current] = node_counts.get(current, 0) + 1
 
-        nodes = [{"node_name": name, "count": node_counts.get(name, 0)} for name in node_names + ["宸插畬鎴?]]
+        nodes = [{"node_name": name, "count": node_counts.get(name, 0)} for name in node_names + ["已完成"]]
         return {"total_batches": total_batches, "countries": countries, "nodes": nodes}
 
 
@@ -456,7 +456,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 if __name__ == "__main__":
     init_db()
     if TURSO_URL:
-        print("v6 Turso 妯″紡鍚姩: http://localhost:8765")
+        print("v6 Turso 模式启动: http://localhost:8765")
     else:
-        print("v6 鏈湴妯″紡鍚姩: http://localhost:8765")
+        print("v6 本地模式启动: http://localhost:8765")
     uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
