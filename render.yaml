@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: container-dashboard
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn dashboard_backend:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TURSO_URL
+        sync: false
+      - key: TURSO_TOKEN
+        sync: false
