@@ -250,16 +250,28 @@ function renderTable() {
   updateSelectedCount();
 }
 
+let _refreshTimer = null;
+
+function scheduleRefresh() {
+  clearTimeout(_refreshTimer);
+  _refreshTimer = setTimeout(refresh, 800);
+}
+
 async function toggleNode(el) {
   const bid = el.dataset.batch;
   const nm = el.dataset.node;
   const checked = el.classList.contains('done');
   const val = checked ? '' : new Date().toISOString().slice(0,10);
-  await fetch(API+'/api/batch-nodes', {method:'PUT',
+
+  // 乐观更新：立刻改 UI
+  if (checked) { el.classList.remove('done'); el.classList.add('empty'); el.textContent = ''; }
+  else { el.classList.remove('empty'); el.classList.add('done'); el.textContent = '✓'; }
+
+  fetch(API+'/api/batch-nodes', {method:'PUT',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({batch_id:+bid,node_name:nm,start_time:val,end_time:val})
   });
-  refresh();
+  scheduleRefresh();
 }
 
 function toggleDate(el) {
@@ -268,37 +280,48 @@ function toggleDate(el) {
   const inp = document.createElement('input');
   inp.type = 'date';
   inp.style.cssText = 'position:absolute;inset:0;opacity:0;cursor:pointer;z-index:10';
-  inp.onchange = async () => {
+  inp.onchange = () => {
     const v = inp.value;
     inp.remove();
-    await fetch(API+'/api/opt-date', {method:'PUT',
+    // 乐观更新：立刻更新日期显示
+    el.classList.add('set');
+    el.innerHTML = '<span>' + v.slice(5) + '</span><span class="clear-date" data-batch="'+bid+'" data-node="'+nm+'" onclick="event.stopPropagation();clearDate(this)">&times;</span>';
+    fetch(API+'/api/opt-date', {method:'PUT',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:v})
     });
-    refresh();
+    scheduleRefresh();
   };
   inp.onblur = () => { setTimeout(() => { if(inp.parentNode) inp.remove(); }, 200); };
   el.appendChild(inp);
   inp.showPicker ? inp.showPicker() : inp.focus();
 }
 
-async function clearDate(el) {
+function clearDate(el) {
   const bid = el.dataset.batch;
   const nm = el.dataset.node;
-  await fetch(API+'/api/opt-date', {method:'PUT',
+  // 乐观更新：立刻清除
+  const cell = el.parentNode;
+  cell.classList.remove('set');
+  cell.innerHTML = '';
+  fetch(API+'/api/opt-date', {method:'PUT',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({batch_id:+bid,node_name:nm,opt_date:''})
   });
-  refresh();
+  scheduleRefresh();
 }
 
 function editNote(bid, cur) {
   const v = prompt('备注', cur);
   if (v===null) return;
+  // 乐观更新：立刻更新对应单元格
+  const tr = document.querySelector('tr[data-batch="'+bid+'"]');
+  if (tr) { const td = tr.querySelector('td.node-cell[onclick*="editNote"]'); if (td) td.textContent = v || '-'; }
   fetch(API+'/api/batch-notes', {method:'PUT',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({batch_id:bid,notes:v})
-  }).then(()=>{toast('已更新');refresh();});
+  });
+  scheduleRefresh();
 }
 
 function showAddBatch(){document.getElementById('modalAdd').classList.add('show')}
