@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>缇庢床鍖鸿揣鏌滆繘搴﹁拷韪?v5</title>
+<title>美洲区货柜进度追踪 v5</title>
 <style>
 :root {
   --bg:#f5f6f8; --card:#fff; --text:#1d1d1f; --text2:#86868b;
@@ -47,10 +47,10 @@ th .est{font-size:9px;font-weight:400;color:#b0b0b8;display:block}
 thead tr:first-child th{border-bottom:2px solid var(--border)}
 td.col-country{text-align:left;font-weight:500;min-width:50px;font-size:11px}
 
-tr[data-country="宸磋タ"] td.col-country{border-left:3px solid #34C759}
-tr[data-country="缇庝笢"] td.col-country{border-left:3px solid var(--accent)}
-tr[data-country="澧ㄨタ鍝?] td.col-country{border-left:3px solid var(--orange)}
-tr[data-country="缇庤タ"] td.col-country{border-left:3px solid #AF52DE}
+tr[data-country="巴西"] td.col-country{border-left:3px solid #34C759}
+tr[data-country="美东"] td.col-country{border-left:3px solid var(--accent)}
+tr[data-country="墨西哥"] td.col-country{border-left:3px solid var(--orange)}
+tr[data-country="美西"] td.col-country{border-left:3px solid #AF52DE}
 tr:hover{background:#fafafb}
 
 .node-cell{cursor:pointer;border-radius:4px;transition:.12s;min-width:72px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;position:relative;user-select:none}
@@ -89,42 +89,42 @@ tr:hover{background:#fafafb}
 <body>
 
 <div class="toolbar">
-  <h1>璐ф煖杩涘害杩借釜</h1>
+  <h1>货柜进度追踪</h1>
   <div class="sep"></div>
-  <button class="primary" onclick="showAddBatch()">+ 鏂板鎵规</button>
-  <button onclick="showEstConfig()">棰勪及澶╂暟</button>
-  <button onclick="deleteSelected()" id="btnDel" disabled>鍒犻櫎閫変腑</button>
+  <button class="primary" onclick="showAddBatch()">+ 新增批次</button>
+  <button onclick="showEstConfig()">预估天数</button>
+  <button onclick="deleteSelected()" id="btnDel" disabled>删除选中</button>
   <div class="sep"></div>
   <select id="countryFilter" onchange="renderTable();refreshStats()">
-    <option value="">鍏ㄩ儴鍥藉</option>
+    <option value="">全部国家</option>
   </select>
   <span class="stats-brief" id="statsBrief"></span>
 </div>
 
 <div class="container">
   <div class="panels">
-    <div class="panel"><h3>鍚勫浗鎵规</h3><div id="countryStats" class="stat-grid"></div></div>
-    <div class="panel" style="flex:2"><h3>鑺傜偣杩涘害</h3><div id="nodeStats" class="stat-grid"></div></div>
-    <div class="panel" style="flex:1.5"><h3>寮傚父鍛婅</h3><div id="anomalyPanel" class="anomaly-list"></div></div>
+    <div class="panel"><h3>各国批次</h3><div id="countryStats" class="stat-grid"></div></div>
+    <div class="panel" style="flex:2"><h3>节点进度</h3><div id="nodeStats" class="stat-grid"></div></div>
+    <div class="panel" style="flex:1.5"><h3>异常告警</h3><div id="anomalyPanel" class="anomaly-list"></div></div>
   </div>
   <div class="table-wrap"><table id="mainTable"></table></div>
 </div>
 
 <div class="modal-overlay" id="modalAdd">
   <div class="modal">
-    <h3>鏂板鎵规</h3>
-    <div class="row"><label>鍥藉</label><select id="addCountry"><option>宸磋タ</option><option>缇庝笢</option><option>澧ㄨタ鍝?/option><option>缇庤タ</option></select></div>
-    <div class="row"><label>鎵规鍙?/label><input id="addName" placeholder="濡?202615"></div>
-    <div class="row"><label>澶囨敞</label><input id="addNotes" placeholder="鍙€?></div>
-    <div class="btns"><button onclick="closeModal('modalAdd')">鍙栨秷</button><button class="primary" onclick="doAdd()">纭</button></div>
+    <h3>新增批次</h3>
+    <div class="row"><label>国家</label><select id="addCountry"><option>巴西</option><option>美东</option><option>墨西哥</option><option>美西</option></select></div>
+    <div class="row"><label>批次号</label><input id="addName" placeholder="如 202615"></div>
+    <div class="row"><label>备注</label><input id="addNotes" placeholder="可选"></div>
+    <div class="btns"><button onclick="closeModal('modalAdd')">取消</button><button class="primary" onclick="doAdd()">确认</button></div>
   </div>
 </div>
 
 <div class="modal-overlay" id="modalEst">
   <div class="modal" style="max-width:660px">
-    <h3>棰勪及鐩搁偦澶╂暟</h3>
+    <h3>预估相邻天数</h3>
     <div id="estForm"></div>
-    <div class="btns"><button onclick="closeModal('modalEst')">鍙栨秷</button><button class="primary" onclick="saveEstConfig()">淇濆瓨</button></div>
+    <div class="btns"><button onclick="closeModal('modalEst')">取消</button><button class="primary" onclick="saveEstConfig()">保存</button></div>
   </div>
 </div>
 
@@ -161,19 +161,19 @@ async function init() {
     renderAnomalies(aRes);
   } catch(e) {
     console.error('init error:', e);
-    document.getElementById('mainTable').innerHTML = '<tr><td style="padding:20px;color:red">鍔犺浇澶辫触: '+e.message+'</td></tr>';
+    document.getElementById('mainTable').innerHTML = '<tr><td style="padding:20px;color:red">加载失败: '+e.message+'</td></tr>';
   }
 }
 
 function renderStats(st) {
   document.getElementById('statsBrief').textContent =
-    `鍏?${st.total_batches} 鎵规 路 ${st.countries.length} 鍥絗;
+    `共 ${st.total_batches} 批次 · ${st.countries.length} 国`;
   document.getElementById('countryStats').innerHTML = st.countries.map(c=>
     `<div class="stat-item"><div class="val">${c.count}</div><div class="lbl">${c.country}</div></div>`
   ).join('');
   const total = st.total_batches || 1;
   document.getElementById('nodeStats').innerHTML = st.nodes.map(n=> {
-    const pct = n.node_name==='宸插畬鎴? ? Math.round(n.count/total*100) : 0;
+    const pct = n.node_name==='已完成' ? Math.round(n.count/total*100) : 0;
     return `<div class="stat-item">
       <div class="val" style="font-size:13px">${n.count}</div>
       <div class="lbl">${n.node_name}</div>
@@ -184,21 +184,21 @@ function renderStats(st) {
 
 function renderAnomalies(a) {
   const p = document.getElementById('anomalyPanel');
-  if (!a.length) { p.innerHTML='<div style="color:var(--text2);font-size:11px">鏆傛棤寮傚父</div>'; return; }
+  if (!a.length) { p.innerHTML='<div style="color:var(--text2);font-size:11px">暂无异常</div>'; return; }
   p.innerHTML = a.map(x=> {
-    let cls='red',label='瓒呮椂';
+    let cls='red',label='超时';
     if(x.estimated_days>0&&x.prev_time){
       try{
         const d=(new Date(x.start_time)-new Date(x.prev_time))/86400000;
-        if(d-x.estimated_days>=3){label=`瓒?{Math.round(d-x.estimated_days)}澶ー}
-        else if(d-x.estimated_days>=1){label=`瓒?{Math.round(d-x.estimated_days)}澶ー}
-        else if(d-x.estimated_days>=-1){cls='orange';label='涓寸晫'}
+        if(d-x.estimated_days>=3){label=`超${Math.round(d-x.estimated_days)}天`}
+        else if(d-x.estimated_days>=1){label=`超${Math.round(d-x.estimated_days)}天`}
+        else if(d-x.estimated_days>=-1){cls='orange';label='临界'}
       }catch(e){}
     }
     return `<div class="item">
       <span class="tag ${cls}">${label}</span>
       <strong>${x.country}-${x.batch_name}</strong> ${x.node_name}
-      <span style="font-size:10px;color:var(--text2)">闂撮殧${x.estimated_days}澶?/span>
+      <span style="font-size:10px;color:var(--text2)">间隔${x.estimated_days}天</span>
     </div>`;
   }).join('');
 }
@@ -206,28 +206,28 @@ function renderAnomalies(a) {
 function renderTable() {
   const filter = document.getElementById('countryFilter').value;
   const filtered = filter ? batches.filter(b=>b.country===filter) : batches;
-  const OPT_NODES = ['鍒颁粨','寮€鑸?,'鍒版腐'];
+  const OPT_NODES = ['到仓','开船','到港'];
 
   const thead = `<thead>
     <tr>
       <th style="width:28px"><input type="checkbox" onchange="toggleAll(this)" id="checkAll"></th>
-      <th>鍥藉</th><th>鎵规</th>
+      <th>国家</th><th>批次</th>
       ${nodeConfig.map(n=>{
-        let h = `<th>${n.node_name}<span class="est">${n.estimated_days||'-'}澶?/span></th>`;
-        if(OPT_NODES.includes(n.node_name)) h += `<th><span style="font-size:11px">鏃ユ湡</span></th>`;
+        let h = `<th>${n.node_name}<span class="est">${n.estimated_days||'-'}天</span></th>`;
+        if(OPT_NODES.includes(n.node_name)) h += `<th><span style="font-size:11px">日期</span></th>`;
         return h;
       }).join('')}
-      <th>澶囨敞</th>
+      <th>备注</th>
     </tr></thead>`;
 
-  const COLOR_MAP = {宸磋タ:'#34C759',缇庝笢:'#4A90D9',澧ㄨタ鍝?'#FF9500',缇庤タ:'#AF52DE'};
+  const COLOR_MAP = {巴西:'#34C759',美东:'#4A90D9',墨西哥:'#FF9500',美西:'#AF52DE'};
   const tbody = filtered.map(b => {
     const nodesMap = {}; b.nodes.forEach(n => nodesMap[n.node_name] = n);
     const cells = nodeConfig.map(cfg => {
       const n = nodesMap[cfg.node_name];
       const checked = !!(n && n.start_time);
       let cell = `<td><div class="node-cell ${checked ? 'done' : 'empty'}" data-batch="${b.id}" data-node="${cfg.node_name}"
-        onclick="toggleNode(this)">${checked ? '鉁? : ''}</div></td>`;
+        onclick="toggleNode(this)">${checked ? '✓' : ''}</div></td>`;
       if (OPT_NODES.includes(cfg.node_name)) {
         const od = (n && n.opt_date) || '';
         cell += `<td><div class="date-cell ${od?'set':''}" data-batch="${b.id}" data-node="${cfg.node_name}"
@@ -293,12 +293,12 @@ async function clearDate(el) {
 }
 
 function editNote(bid, cur) {
-  const v = prompt('澶囨敞', cur);
+  const v = prompt('备注', cur);
   if (v===null) return;
   fetch(API+'/api/batch-notes', {method:'PUT',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({batch_id:bid,notes:v})
-  }).then(()=>{toast('宸叉洿鏂?);refresh();});
+  }).then(()=>{toast('已更新');refresh();});
 }
 
 function showAddBatch(){document.getElementById('modalAdd').classList.add('show')}
@@ -307,13 +307,13 @@ function closeModal(id){document.getElementById(id).classList.remove('show')}
 async function doAdd() {
   const country = document.getElementById('addCountry').value;
   const name = document.getElementById('addName').value.trim();
-  if (!name) return toast('璇疯緭鍏ユ壒娆″彿','error');
+  if (!name) return toast('请输入批次号','error');
   await fetch(API+'/api/batches', {method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({country,batch_name:name,notes:document.getElementById('addNotes').value})
   });
   closeModal('modalAdd');
-  toast('鎵规宸叉坊鍔?);
+  toast('批次已添加');
   refresh();
 }
 
@@ -322,8 +322,8 @@ function showEstConfig() {
     <div class="row">
       <label>${n.node_name}</label>
       <input type="number" step="0.5" min="0" value="${n.estimated_days}" data-node="${n.node_name}" style="width:70px">
-      <span style="font-size:10px;color:var(--text2)">澶?/span>
-      ${n.sort_order===0?'<span style="font-size:10px;color:var(--text2)">(璧峰鑺傜偣)</span>':''}
+      <span style="font-size:10px;color:var(--text2)">天</span>
+      ${n.sort_order===0?'<span style="font-size:10px;color:var(--text2)">(起始节点)</span>':''}
     </div>`).join('');
   document.getElementById('estForm').innerHTML = html;
   document.getElementById('modalEst').classList.add('show');
@@ -338,7 +338,7 @@ async function saveEstConfig() {
     });
   }
   closeModal('modalEst');
-  toast('棰勪及澶╂暟宸叉洿鏂?);
+  toast('预估天数已更新');
   refresh();
 }
 
@@ -360,17 +360,17 @@ function toggleAll(cb) {
 function updateSelectedCount() {
   const btn = document.getElementById('btnDel');
   btn.disabled = selectedBatches.size===0;
-  btn.textContent = selectedBatches.size ? `鍒犻櫎 (${selectedBatches.size})` : '鍒犻櫎';
+  btn.textContent = selectedBatches.size ? `删除 (${selectedBatches.size})` : '删除';
 }
 
 async function deleteSelected() {
   if (!selectedBatches.size) return;
-  if (!confirm(`纭鍒犻櫎 ${selectedBatches.size} 涓壒娆★紵`)) return;
+  if (!confirm(`确认删除 ${selectedBatches.size} 个批次？`)) return;
   for (const bid of selectedBatches) {
     await fetch(API+'/api/batches/'+bid, {method:'DELETE'});
   }
   selectedBatches.clear();
-  toast('宸插垹闄?);
+  toast('已删除');
   refresh();
 }
 
@@ -388,7 +388,7 @@ async function refresh() {
   const sel = document.getElementById('countryFilter');
   const currentFilter = filter;
   const countries = [...new Set(batches.map(b=>b.country))].sort();
-  sel.innerHTML = '<option value="">鍏ㄩ儴鍥藉</option>';
+  sel.innerHTML = '<option value="">全部国家</option>';
   countries.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
   if (countries.includes(currentFilter)) sel.value = currentFilter;
   renderTable();
