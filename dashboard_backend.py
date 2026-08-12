@@ -36,6 +36,20 @@ NODE_NAMES = [n[0] for n in NODES_DEF]
 
 sse_listeners: list[asyncio.Queue] = []
 
+# 内存缓存：写入后失效，避免每次读都跨太平洋查 Turso
+_cache = {}
+_cache_version = 0
+
+def invalidate_cache():
+    global _cache_version
+    _cache_version += 1
+    _cache.clear()
+
+def cached(key, compute):
+    ck = f"{key}:{_cache_version}"
+    if ck not in _cache:
+        _cache[ck] = compute()
+    return _cache[ck]
 
 def now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -294,33 +308,35 @@ async def sse_events():
 
 @app.get("/api/batches")
 def list_batches():
-    with get_db() as db:
-        batches = db.execute("SELECT * FROM batches ORDER BY country, batch_name").fetchall()
-        all_nodes = db.execute("""
-            SELECT bn.batch_id, bn.node_name, bn.start_time, bn.end_time,
-                   bn.is_overdue, bn.opt_date, nc.estimated_days, nc.is_timepoint
-            FROM batch_nodes bn
-            JOIN node_config nc ON bn.node_name=nc.node_name
-            ORDER BY nc.sort_order
-        """).fetchall()
-        nodes_by_bid = {}
-        for n in all_nodes:
-            bid = n["batch_id"]
-            nodes_by_bid.setdefault(bid, []).append({
-                "node_name": n["node_name"], "start_time": n["start_time"],
-                "end_time": n["end_time"], "is_overdue": bool(n["is_overdue"]),
-                "estimated_days": n["estimated_days"], "is_timepoint": bool(n["is_timepoint"]),
-                "opt_date": n["opt_date"] or "",
-            })
-        result = []
-        for b in batches:
-            result.append({
-                "id": b["id"], "country": b["country"], "batch_name": b["batch_name"],
-                "notes": b["notes"],
-                "nodes": nodes_by_bid.get(b["id"], []),
-                "created_at": b["created_at"], "updated_at": b["updated_at"],
-            })
-        return result
+    def compute():
+        with get_db() as db:
+            batches = db.execute("SELECT * FROM batches ORDER BY country, batch_name").fetchall()
+            all_nodes = db.execute("""
+                SELECT bn.batch_id, bn.node_name, bn.start_time, bn.end_time,
+                       bn.is_overdue, bn.opt_date, nc.estimated_days, nc.is_timepoint
+                FROM batch_nodes bn
+                JOIN node_config nc ON bn.node_name=nc.node_name
+                ORDER BY nc.sort_order
+            """).fetchall()
+            nodes_by_bid = {}
+            for n in all_nodes:
+                bid = n["batch_id"]
+                nodes_by_bid.setdefault(bid, []).append({
+                    "node_name": n["node_name"], "start_time": n["start_time"],
+                    "end_time": n["end_time"], "is_overdue": bool(n["is_overdue"]),
+                    "estimated_days": n["estimated_days"], "is_timepoint": bool(n["is_timepoint"]),
+                    "opt_date": n["opt_date"] or "",
+                })
+            result = []
+            for b in batches:
+                result.append({
+                    "id": b["id"], "country": b["country"], "batch_name": b["batch_name"],
+                    "notes": b["notes"],
+                    "nodes": nodes_by_bid.get(b["id"], []),
+                    "created_at": b["created_at"], "updated_at": b["updated_at"],
+                })
+            return result
+    return cached("batches", compute)
 
 
 @app.post("/api/batches")
@@ -332,6 +348,7 @@ async def create_batch(data: BatchCreate):
         bid = c.lastrowid
         for nm in NODE_NAMES:
             db.execute("INSERT INTO batch_nodes (batch_id,node_name) VALUES (?,?)", (bid, nm))
+    invalidate_cache()
     await broadcast_change()
     return {"id": bid, "message": "批次已添加"}
 
@@ -341,6 +358,7 @@ async def delete_batch(batch_id: int):
     with get_db() as db:
         db.execute("DELETE FROM batch_nodes WHERE batch_id=?", (batch_id,))
         db.execute("DELETE FROM batches WHERE id=?", (batch_id,))
+    invalidate_cache()
     await broadcast_change()
     return {"message": "批次已删除"}
 
@@ -353,6 +371,7 @@ async def update_batch_node(data: BatchNodeUpdate):
                    (st, st, data.batch_id, data.node_name))
         db.execute("UPDATE batches SET updated_at=? WHERE id=?", (_mk_time(), data.batch_id))
         recalc_batch_overdue(db, data.batch_id)
+    invalidate_cache()
     await broadcast_change()
     return {"message": "节点已更新"}
 
@@ -363,16 +382,19 @@ async def update_opt_date(data: OptDateUpdate):
         db.execute("UPDATE batch_nodes SET opt_date=? WHERE batch_id=? AND node_name=?",
                    (data.opt_date, data.batch_id, data.node_name))
         db.execute("UPDATE batches SET updated_at=? WHERE id=?", (_mk_time(), data.batch_id))
+    invalidate_cache()
     await broadcast_change()
     return {"message": "可选日期已更新"}
 
 
 @app.get("/api/node-config")
 def get_node_config():
-    with get_db() as db:
-        rows = db.execute("SELECT * FROM node_config ORDER BY sort_order").fetchall()
-        return [{"node_name": r["node_name"], "sort_order": r["sort_order"],
-                 "estimated_days": r["estimated_days"], "is_timepoint": bool(r["is_timepoint"])} for r in rows]
+    def compute():
+        with get_db() as db:
+            rows = db.execute("SELECT * FROM node_config ORDER BY sort_order").fetchall()
+            return [{"node_name": r["node_name"], "sort_order": r["sort_order"],
+                     "estimated_days": r["estimated_days"], "is_timepoint": bool(r["is_timepoint"])} for r in rows]
+    return cached("node-config", compute)
 
 
 @app.put("/api/node-config")
@@ -383,6 +405,7 @@ async def update_node_config(data: NodeConfigUpdate):
         batch_ids = db.execute("SELECT id FROM batches").fetchall()
         for bid in batch_ids:
             recalc_batch_overdue(db, bid["id"])
+    invalidate_cache()
     await broadcast_change()
     return {"message": "预估用时已更新"}
 
@@ -391,88 +414,93 @@ async def update_node_config(data: NodeConfigUpdate):
 async def update_batch_note(data: BatchNoteUpdate):
     with get_db() as db:
         db.execute("UPDATE batches SET notes=?, updated_at=? WHERE id=?", (data.notes, _mk_time(), data.batch_id))
+    invalidate_cache()
     await broadcast_change()
     return {"message": "备注已更新"}
 
 
 @app.get("/api/anomalies")
 def get_anomalies():
-    with get_db() as db:
-        rows = db.execute("""
-            SELECT bn.id, b.country, b.batch_name, bn.node_name, bn.start_time,
-                   nc.estimated_days, nc.sort_order, bn.batch_id
-            FROM batch_nodes bn JOIN batches b ON bn.batch_id=b.id
-            JOIN node_config nc ON bn.node_name=nc.node_name
-            WHERE bn.is_overdue=1 ORDER BY b.country, b.batch_name, nc.sort_order
-        """).fetchall()
+    def compute():
+        with get_db() as db:
+            rows = db.execute("""
+                SELECT bn.id, b.country, b.batch_name, bn.node_name, bn.start_time,
+                       nc.estimated_days, nc.sort_order, bn.batch_id
+                FROM batch_nodes bn JOIN batches b ON bn.batch_id=b.id
+                JOIN node_config nc ON bn.node_name=nc.node_name
+                WHERE bn.is_overdue=1 ORDER BY b.country, b.batch_name, nc.sort_order
+            """).fetchall()
 
-        bid_set = set(r["batch_id"] for r in rows)
-        prev_map = {}
-        if bid_set:
-            all_prev = db.execute("""
-                SELECT bn2.batch_id, nc2.sort_order, bn2.start_time
-                FROM batch_nodes bn2
-                JOIN node_config nc2 ON bn2.node_name=nc2.node_name
-                WHERE bn2.batch_id IN ({})
-                ORDER BY bn2.batch_id, nc2.sort_order
-            """.format(",".join("?" * len(bid_set))), list(bid_set)).fetchall()
-            by_batch = {}
-            for p in all_prev:
-                by_batch.setdefault(p["batch_id"], []).append(p)
-            for bid, plist in by_batch.items():
-                for i in range(len(plist)):
-                    prev_map[(bid, plist[i]["sort_order"])] = i > 0 and plist[i-1]["start_time"] or ""
+            bid_set = set(r["batch_id"] for r in rows)
+            prev_map = {}
+            if bid_set:
+                all_prev = db.execute("""
+                    SELECT bn2.batch_id, nc2.sort_order, bn2.start_time
+                    FROM batch_nodes bn2
+                    JOIN node_config nc2 ON bn2.node_name=nc2.node_name
+                    WHERE bn2.batch_id IN ({})
+                    ORDER BY bn2.batch_id, nc2.sort_order
+                """.format(",".join("?" * len(bid_set))), list(bid_set)).fetchall()
+                by_batch = {}
+                for p in all_prev:
+                    by_batch.setdefault(p["batch_id"], []).append(p)
+                for bid, plist in by_batch.items():
+                    for i in range(len(plist)):
+                        prev_map[(bid, plist[i]["sort_order"])] = i > 0 and plist[i-1]["start_time"] or ""
 
-        result = []
-        for r in rows:
-            prev_time = prev_map.get((r["batch_id"], r["sort_order"]), "")
-            result.append({
-                "country": r["country"], "batch_name": r["batch_name"],
-                "node_name": r["node_name"], "start_time": r["start_time"],
-                "prev_time": prev_time, "estimated_days": r["estimated_days"]
-            })
-        return result
+            result = []
+            for r in rows:
+                prev_time = prev_map.get((r["batch_id"], r["sort_order"]), "")
+                result.append({
+                    "country": r["country"], "batch_name": r["batch_name"],
+                    "node_name": r["node_name"], "start_time": r["start_time"],
+                    "prev_time": prev_time, "estimated_days": r["estimated_days"]
+                })
+            return result
+    return cached("anomalies", compute)
 
 
 @app.get("/api/stats")
 def get_stats(country: str = ""):
-    with get_db() as db:
-        country_filter = "WHERE country=?" if country else ""
-        country_params = (country,) if country else ()
+    def compute():
+        with get_db() as db:
+            country_filter = "WHERE country=?" if country else ""
+            country_params = (country,) if country else ()
 
-        country_stats = db.execute("SELECT country, COUNT(*) as cnt FROM batches GROUP BY country ORDER BY country").fetchall()
-        countries = [{"country": r["country"], "count": r["cnt"]} for r in country_stats]
-        total_batches = db.execute(f"SELECT COUNT(*) as cnt FROM batches {country_filter}", country_params).fetchone()["cnt"]
+            country_stats = db.execute("SELECT country, COUNT(*) as cnt FROM batches GROUP BY country ORDER BY country").fetchall()
+            countries = [{"country": r["country"], "count": r["cnt"]} for r in country_stats]
+            total_batches = db.execute(f"SELECT COUNT(*) as cnt FROM batches {country_filter}", country_params).fetchone()["cnt"]
 
-        node_config = db.execute("SELECT node_name, sort_order FROM node_config ORDER BY sort_order").fetchall()
-        node_names = [nc["node_name"] for nc in node_config]
+            node_config = db.execute("SELECT node_name, sort_order FROM node_config ORDER BY sort_order").fetchall()
+            node_names = [nc["node_name"] for nc in node_config]
 
-        all_nodes = db.execute(f"""
-            SELECT bn.batch_id, bn.node_name, bn.start_time, nc.sort_order
-            FROM batch_nodes bn
-            JOIN node_config nc ON bn.node_name=nc.node_name
-            JOIN batches b ON bn.batch_id=b.id
-            {country_filter}
-            ORDER BY bn.batch_id, nc.sort_order
-        """, country_params).fetchall()
+            all_nodes = db.execute(f"""
+                SELECT bn.batch_id, bn.node_name, bn.start_time, nc.sort_order
+                FROM batch_nodes bn
+                JOIN node_config nc ON bn.node_name=nc.node_name
+                JOIN batches b ON bn.batch_id=b.id
+                {country_filter}
+                ORDER BY bn.batch_id, nc.sort_order
+            """, country_params).fetchall()
 
-        node_counts = {name: 0 for name in node_names}
-        node_counts["已完成"] = 0
-        prev_bid = None
-        current_for_batch = "已完成"
-        for n in all_nodes:
-            if n["batch_id"] != prev_bid:
-                if prev_bid is not None:
-                    node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
-                prev_bid = n["batch_id"]
-                current_for_batch = "已完成"
-            if current_for_batch == "已完成" and not n["start_time"]:
-                current_for_batch = n["node_name"]
-        if prev_bid is not None:
-            node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
+            node_counts = {name: 0 for name in node_names}
+            node_counts["已完成"] = 0
+            prev_bid = None
+            current_for_batch = "已完成"
+            for n in all_nodes:
+                if n["batch_id"] != prev_bid:
+                    if prev_bid is not None:
+                        node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
+                    prev_bid = n["batch_id"]
+                    current_for_batch = "已完成"
+                if current_for_batch == "已完成" and not n["start_time"]:
+                    current_for_batch = n["node_name"]
+            if prev_bid is not None:
+                node_counts[current_for_batch] = node_counts.get(current_for_batch, 0) + 1
 
-        nodes = [{"node_name": name, "count": node_counts.get(name, 0)} for name in node_names + ["已完成"]]
-        return {"total_batches": total_batches, "countries": countries, "nodes": nodes}
+            nodes = [{"node_name": name, "count": node_counts.get(name, 0)} for name in node_names + ["已完成"]]
+            return {"total_batches": total_batches, "countries": countries, "nodes": nodes}
+    return cached(f"stats:{country}", compute)
 
 
 @app.get("/")
